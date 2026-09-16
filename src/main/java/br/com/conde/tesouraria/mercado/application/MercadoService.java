@@ -42,20 +42,20 @@ public class MercadoService {
                 .orElseGet(() -> cotacoes.save(new Cotacao(par, tipo, data, taxa, fonte)));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public List<Cotacao> historico(ParMoedas par, TipoCotacao tipo, LocalDate inicio, LocalDate fim) {
         return cotacoes.findAllByParAndTipoAndDataBetweenOrderByData(par.codigo(), tipo, inicio, fim);
     }
 
     /** Cotação mais recente até a data. Aceita o par invertido e devolve 1/taxa. */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public Cotacao cotacaoMaisRecente(ParMoedas par, TipoCotacao tipo, LocalDate ate) {
         return cotacoes.findFirstByParAndTipoAndDataLessThanEqualOrderByDataDesc(par.codigo(), tipo, ate)
                 .orElseThrow(() -> new NaoEncontradoException("cotação " + tipo + " " + par, "até " + ate));
     }
 
     /** Taxa do par (direta ou via par invertido) mais recente até a data. */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public BigDecimal taxa(ParMoedas par, TipoCotacao tipo, LocalDate ate) {
         var direta = cotacoes.findFirstByParAndTipoAndDataLessThanEqualOrderByDataDesc(par.codigo(), tipo, ate);
         if (direta.isPresent()) return direta.get().getTaxa();
@@ -65,7 +65,7 @@ public class MercadoService {
     }
 
     /** PTAX exatamente na data (fixing de NDF não aceita data aproximada). */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public BigDecimal ptaxNaData(ParMoedas par, LocalDate data) {
         return cotacoes.findByParAndTipoAndData(par.codigo(), TipoCotacao.PTAX, data).map(Cotacao::getTaxa)
                 .or(() -> cotacoes.findByParAndTipoAndData(par.inverso().codigo(), TipoCotacao.PTAX, data).map(Cotacao::taxaInversa))
@@ -80,13 +80,13 @@ public class MercadoService {
         return curvas.save(new CurvaJuros(nome, dataReferencia, convencao, pontos));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public CurvaJuros curva(String nome, LocalDate ate) {
         return curvas.findFirstByNomeAndDataReferenciaLessThanEqualOrderByDataReferenciaDesc(nome, ate)
                 .orElseThrow(() -> new NaoEncontradoException("curva " + nome, "até " + ate));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public List<CurvaJuros> datasDaCurva(String nome) { return curvas.findAllByNomeOrderByDataReferenciaDesc(nome); }
 
     // ---------- termo ----------
@@ -98,7 +98,7 @@ public class MercadoService {
      * Taxa a termo teórica de MOEDA/BRL por paridade coberta de juros:
      * F = S × fatorDI(du) / fatorCupom(dc). Só faz sentido para pares cotados em BRL.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public Termo forwardTeorico(ParMoedas par, LocalDate dataReferencia, LocalDate vencimento) {
         if (!par.cotada().equals("BRL")) throw new DomainException("forward teórico disponível apenas para pares cotados em BRL");
         if (!vencimento.isAfter(dataReferencia)) throw new DomainException("vencimento deve ser posterior à data de referência");

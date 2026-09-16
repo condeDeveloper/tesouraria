@@ -137,12 +137,12 @@ public class CambioService {
         return op;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public OperacaoCambio buscar(UUID id) {
         return operacoes.findById(id).orElseThrow(() -> new NaoEncontradoException("operação de câmbio", id));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public Page<OperacaoCambio> listar(SituacaoOperacao situacao, UUID contraparteId, Pageable pageable) {
         if (contraparteId != null) return operacoes.findAllByContraparteIdOrderByDataNegociacaoDesc(contraparteId, pageable);
         if (situacao != null) return operacoes.findAllBySituacaoOrderByDataNegociacaoDesc(situacao, pageable);
@@ -159,7 +159,7 @@ public class CambioService {
      * não realizado das operações de câmbio, já que cada operação nasce com equivalente zero
      * à taxa negociada.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = DomainException.class)
     public Posicao posicao(LocalDate data) {
         List<PosicaoMoeda> lista = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO;
@@ -167,12 +167,18 @@ public class CambioService {
             if (!c.getCodigo().startsWith(POSICAO)) continue;
             BigDecimal posicao = ledger.saldo(c.getId(), data).quantia(); // conta credora: saldo positivo = moeda comprada
             if (posicao.signum() == 0) continue;
-            BigDecimal spot = c.getMoeda().equals("BRL") ? BigDecimal.ONE : mercado.taxa(new ParMoedas(c.getMoeda(), "BRL"), TipoCotacao.SPOT, data);
-            BigDecimal equiv = posicao.multiply(spot).setScale(2, RoundingMode.HALF_EVEN);
+            BigDecimal spot = spotSeguro(c.getMoeda(), data);
+            BigDecimal equiv = spot == null ? null : posicao.multiply(spot).setScale(2, RoundingMode.HALF_EVEN);
             lista.add(new PosicaoMoeda(c.getMoeda(), posicao, spot, equiv));
-            total = total.add(equiv);
+            if (equiv != null) total = total.add(equiv);
         }
         return new Posicao(data, lista, total);
+    }
+
+    /** Spot da moeda contra BRL na data, ou null se não houver cotação (posição fica sem equivalente). */
+    private BigDecimal spotSeguro(String moeda, LocalDate data) {
+        if (moeda.equals("BRL")) return BigDecimal.ONE;
+        try { return mercado.taxa(new ParMoedas(moeda, "BRL"), TipoCotacao.SPOT, data); } catch (NaoEncontradoException e) { return null; }
     }
 
     private ContaContabil conta(String prefixo, String moeda) {
